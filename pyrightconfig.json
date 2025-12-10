@@ -1,0 +1,10 @@
+{
+    "venvPath": ".",
+    "venv": ".",
+    "extraPaths": [
+        "C:\\Python313\\Lib\\site-packages",
+        "C:\\Users\\Administrator\\AppData\\Roaming\\Python\\Python313\\site-packages"
+    ],
+    "pythonVersion": "3.13",
+    "pythonPlatform": "Windows"
+} 
