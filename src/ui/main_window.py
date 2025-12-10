@@ -165,19 +165,15 @@ class MainApplication(tk.Frame):
         
     def gerar_pdf_se_disponivel(self):
         """Gera PDF se houver dados suficientes (atalho Ctrl+P)"""
+        if not self.modo_edicao:
+            messagebox.showinfo("Informação", "Salve o orçamento primeiro antes de gerar o PDF.")
+            return
+            
         if not self.items_treeview.get_children():
             messagebox.showinfo("Informação", "Para gerar PDF, é necessário ter pelo menos um item no orçamento.")
-        elif not self.cliente_selecionado:
-            resposta = messagebox.askyesno(
-                "Cliente Não Selecionado",
-                "Deseja gerar o PDF mesmo sem cliente selecionado?\n\n"
-                "Isso é permitido para compatibilidade com o sistema legado.",
-                icon='warning'
-            )
-            if resposta:
-                self.gerar_pdf_orcamento_atual()
-        else:
-            self.gerar_pdf_orcamento_atual()
+            return
+            
+        self.gerar_pdf_orcamento_atual()
         
     def on_escape_key(self, event):
         """Limpa os campos de produto quando pressiona Escape"""
@@ -924,34 +920,10 @@ class MainApplication(tk.Frame):
             messagebox.showerror("Erro", f"Erro ao gerar reimpressão: {e}")
 
     def gerar_pdf_orcamento_atual(self):
-        """Salva o orçamento atual e gera PDF"""
-        if not self.cliente_selecionado:
-            try:
-                cond_pag_selecionada_str = self.cond_pag_var.get()
-                cod_cond_pag = cond_pag_selecionada_str.split(' - ')[0]
-                permite_sem_cliente = condicao_permite_sem_cliente(cod_cond_pag)
-                
-                if not permite_sem_cliente:
-                    messagebox.showerror(
-                        "Cliente Obrigatório", 
-                        f"A condição de pagamento '{cond_pag_selecionada_str}' exige que um cliente seja informado.\n\n"
-                        "Por favor, selecione um cliente antes de gerar o PDF."
-                    )
-                    return
-                else:
-                    resposta = messagebox.askyesno(
-                        "Gerar PDF sem Cliente",
-                        f"A condição '{cond_pag_selecionada_str}' permite orçamentos sem cliente.\n\n"
-                        "Deseja gerar o PDF mesmo assim?\n\n"
-                        "O PDF será gerado com 'Cliente: Não informado'.",
-                        icon='question'
-                    )
-                    if not resposta:
-                        return
-                        
-            except Exception as e:
-                messagebox.showerror("Erro", f"Erro ao verificar condição: {e}")
-                return
+        """Gera PDF do orçamento atual (já salvo)"""
+        if not self.modo_edicao:
+            messagebox.showwarning("Atenção", "Este orçamento ainda não foi salvo. Salve primeiro antes de gerar o PDF.")
+            return
             
         if not self.items_treeview.get_children():
             messagebox.showwarning("Atenção", "Não há itens no orçamento.")
@@ -988,48 +960,17 @@ class MainApplication(tk.Frame):
             valor_total=self.total_orcamento
         )
 
-        itens_list = []
-        for i, item_data in enumerate(self.itens_para_salvar):
-            desconto_item = Decimal('0.0')
-            if self.desconto_aplicado > 0 and self.total_orcamento > 0:
-                proporcao = item_data['subtotal'] / self.total_orcamento
-                desconto_item = self.desconto_aplicado * proporcao
-            
-            item_obj = ItemOrcamento(
-                numero_nota=numero_nota,
-                sequencia=i + 1,
-                codigo_produto=item_data['codigo'],
-                quantidade=item_data['quantidade'],
-                valor_unitario=item_data['valor_unitario'],
-                deposito=get_deposito_config(),
-                valor_desconto=desconto_item,
-                total_bruto_item=item_data['subtotal'],
-                custo=item_data['custo']
-            )
-            itens_list.append(item_obj)
-        
-        if self.modo_edicao:
-            sucesso, mensagem_salvar = atualizar_orcamento(orcamento_obj, itens_list)
-        else:
-            sucesso, mensagem_salvar = salvar_orcamento(orcamento_obj, itens_list)
-
-        if not sucesso:
-            messagebox.showerror("Erro ao Salvar", f"Não foi possível salvar o orçamento antes de gerar o PDF.\n{mensagem_salvar}")
-            return
-
         try:
             cond_pag_descricao = self.cond_pag_var.get()
             gerar_pdf_orcamento(orcamento_obj, self.itens_para_salvar, self.cliente_selecionado, vendedor_obj, cond_pag_descricao, float(self.desconto_aplicado), float(self.valor_final))
-            messagebox.showinfo("Sucesso", f"Orçamento salvo e PDF gerado com sucesso!\n{mensagem_salvar}")
+            messagebox.showinfo("Sucesso", "PDF gerado com sucesso!")
             
         except Exception as e:
-            messagebox.showerror("Erro", f"Orçamento salvo, mas erro ao gerar PDF: {e}")
-            
-        self.atualizar_visibilidade_botao_pdf()
+            messagebox.showerror("Erro", f"Erro ao gerar PDF: {e}")
 
     def atualizar_visibilidade_botao_pdf(self):
-        """Controla quando o botão PDF deve estar visível"""
-        if self.items_treeview.get_children():
+        """Controla quando o botão PDF deve estar visível - apenas em orçamentos já salvos"""
+        if self.modo_edicao and self.items_treeview.get_children():
             self.pdf_button.pack(side="right", padx=5, before=self.save_button)
         else:
             self.pdf_button.pack_forget()
