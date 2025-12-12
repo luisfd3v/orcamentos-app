@@ -31,9 +31,15 @@ Também poderá excluir um produto (clicando com botão direito em cima do botã
 
 Na tela de desconto, o usuário poderá definir um desconto utilizando uma porcentagem, ou o valor total do desconto. 
 
+O sistema irá calcular a média dos limites de desconto de cada produto, caso o usuário queira dar um desconto maior que o limite, o sistema irá pedir a senha personalizada cadastrada no Nucleo.
+
 O usuário também terá a opção de limpar um desconto dado anteriormente.
 
 ![tela-desconto](assets/tela-desconto.png)
+
+Se a condição de pagamento for à prazo, o sistema irá validar o limite de crédito do cliente, caso o orçamento exceda o valor de limite, será exigido a senha personalizada cadastrada no Nucleo para liberação.
+
+![tela-limite](assets/tela-limite.png)
 
 Após salvar o orçamento, o sistema irá perguntar ao usuário se deseja gerar o PDF do orçamento para impressão.
 
