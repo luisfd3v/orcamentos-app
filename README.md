@@ -4,7 +4,7 @@
 Sistema de orçamentos desenvolvido para atender a necessidade de um cliente que utiliza o sistema VTi.
 ## Instalação
 
- - [Link de Download](https://github.com/luisfd3v/orcamentos-app/releases/download/v1.0.0/Orcamentos.zip)
+ - [Link de Download](https://github.com/luisfd3v/orcamentos-app/releases/download/v1.1.0/Orcamento.zip)
 
 Após fazer o Download, crie uma pasta Orcamentos na pasta raiz do VTi e extraia os arquivos da pasta zip.
 
