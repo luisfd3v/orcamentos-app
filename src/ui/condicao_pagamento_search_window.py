@@ -25,7 +25,6 @@ class CondicaoPagamentoSearchWindow(tk.Toplevel):
         self.after(100, lambda: self.search_entry.focus_set())
         
     def center_window(self):
-        """Centraliza a janela na tela"""
         self.update_idletasks()
         width = self.winfo_width()
         height = self.winfo_height()
@@ -74,7 +73,6 @@ class CondicaoPagamentoSearchWindow(tk.Toplevel):
         cancel_button.pack(side='right', padx=5)
 
     def filtrar_condicoes(self, event=None):
-        """Filtra condições baseado na pesquisa"""
         search_text = self.search_entry.get().lower()
         
         for item in self.tree.get_children():
@@ -96,21 +94,18 @@ class CondicaoPagamentoSearchWindow(tk.Toplevel):
             self.tree.focus(self.tree.get_children()[0])
 
     def on_enter_search(self, event):
-        """Seleciona o primeiro item quando pressiona Enter na busca"""
         if self.tree.get_children():
             self.tree.selection_set(self.tree.get_children()[0])
             self.tree.focus(self.tree.get_children()[0])
             self.on_select()
 
     def move_to_list(self, event):
-        """Move o foco para a lista"""
         if self.tree.get_children():
             self.tree.focus(self.tree.get_children()[0])
             self.tree.selection_set(self.tree.get_children()[0])
             self.tree.focus_set()
 
     def on_select(self, event=None):
-        """Callback para seleção de condição de pagamento"""
         selection = self.tree.selection()
         if selection:
             item = selection[0]

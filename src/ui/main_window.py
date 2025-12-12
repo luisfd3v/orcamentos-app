@@ -20,7 +20,6 @@ from ui.vendedor_search_window import VendedorSearchWindow
 from ui.condicao_pagamento_search_window import CondicaoPagamentoSearchWindow
 
 def get_config_path():
-    """Retorna o caminho para o arquivo de configuração"""
     if getattr(sys, 'frozen', False):
         base_path = os.path.dirname(sys.executable)
         config_path = os.path.join(base_path, 'config.ini')
@@ -30,7 +29,6 @@ def get_config_path():
     return config_path
 
 def get_fullscreen_setting():
-    """Lê a configuração de fullscreen do config.ini"""
     try:
         config = configparser.ConfigParser()
         config_path = get_config_path()
@@ -44,28 +42,7 @@ def get_fullscreen_setting():
     except Exception as e:
         return True
 
-def get_desconto_padrao_config():
-    """Lê o limite de desconto padrão do config.ini"""
-    try:
-        config = configparser.ConfigParser()
-        config_path = get_config_path()
-        
-        if os.path.exists(config_path):
-            config.read(config_path, encoding='utf-8')
-            if 'Desconto' in config and 'limite_padrao' in config['Desconto']:
-                limite = float(config['Desconto']['limite_padrao'])
-                return {
-                    'desconto_max': limite,
-                    'vendedor_encontrado': True,
-                    'fonte': 'config.ini'
-                }
-        
-        return None
-    except Exception as e:
-        return None
-
 def get_terminal_config():
-    """Lê o número do terminal do config.ini"""
     try:
         config = configparser.ConfigParser()
         config_path = get_config_path()
@@ -76,7 +53,7 @@ def get_terminal_config():
                 terminal = config['Application']['terminal']
                 return terminal
         
-        return "01"  
+        return "01"
     except Exception as e:
         return "01"
 
@@ -100,36 +77,30 @@ class MainApplication(tk.Frame):
         self.valor_final = Decimal('0.0')
         self.itens_para_salvar = []
         self.modo_edicao = False
-        self.janela_desconto_aberta = False  # Flag para controlar janela de desconto
+        self.janela_desconto_aberta = False
 
         self.create_widgets()
         self.setup_keyboard_shortcuts()
         self.novo_orcamento()
 
     def configurar_icone(self):
-        """Configura o ícone da janela para a barra de tarefas"""
         try:
             if getattr(sys, 'frozen', False):
-                # Se for executável compilado pelo PyInstaller
-                # sys._MEIPASS é o caminho temporário onde o PyInstaller extrai os arquivos
                 if hasattr(sys, '_MEIPASS'):
                     base_path = sys._MEIPASS
                 else:
                     base_path = os.path.dirname(sys.executable)
                 icon_path = os.path.join(base_path, 'ico', 'pedido.ico')
             else:
-                # Se estiver rodando o script Python
                 base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
                 icon_path = os.path.join(base_path, 'ico', 'pedido.ico')
             
             if os.path.exists(icon_path):
                 self.parent.iconbitmap(icon_path)
         except Exception as e:
-            # Se houver erro ao carregar o ícone, apenas ignore
             pass
 
     def configurar_janela(self):
-        """Configura o tamanho e posição da janela baseado no config.ini"""
         fullscreen = get_fullscreen_setting()
         
         if fullscreen:
@@ -155,7 +126,6 @@ class MainApplication(tk.Frame):
             self.parent.minsize(800, 500)
 
     def setup_keyboard_shortcuts(self):
-        """Configura atalhos de teclado"""
         self.parent.bind('<Control-n>', lambda e: self.novo_orcamento())
         self.parent.bind('<Control-s>', lambda e: self.salvar_ou_atualizar_orcamento())
         self.parent.bind('<Control-p>', lambda e: self.gerar_pdf_se_disponivel())
@@ -165,7 +135,6 @@ class MainApplication(tk.Frame):
         self.parent.bind('<Delete>', self.on_delete_key)
         
     def gerar_pdf_se_disponivel(self):
-        """Gera PDF se houver dados suficientes (atalho Ctrl+P)"""
         if not self.modo_edicao:
             messagebox.showinfo("Informação", "Salve o orçamento primeiro antes de gerar o PDF.")
             return
@@ -177,25 +146,14 @@ class MainApplication(tk.Frame):
         self.gerar_pdf_orcamento_atual()
         
     def on_escape_key(self, event):
-        """Limpa os campos de produto quando pressiona Escape"""
         self.produto_codigo_entry.delete(0, 'end')
         self.produto_qtd_entry.delete(0, 'end')
         self.produto_codigo_entry.focus()
     
     def on_delete_key(self, event):
-        """Exclui item selecionado quando pressiona DELETE"""
         self.excluir_item_selecionado()
         
     def on_f9_search(self, event):
-        """
-        Busca inteligente com F9 (padrão do sistema legado)
-        
-        - Se foco no campo cliente: busca cliente
-        - Se foco no campo vendedor: busca vendedor
-        - Se foco no campo condição pagamento: busca condição pagamento
-        - Se foco no campo produto/quantidade: busca produto
-        - Outros casos: busca cliente primeiro, depois produto conforme necessário
-        """
         current_focus = self.focus_get()
         
         if current_focus == self.cliente_entry or current_focus is None:
@@ -240,28 +198,23 @@ class MainApplication(tk.Frame):
         if self.focus_get() == self.cliente_entry:
             self.vendedor_entry.focus()
         
-        # Validar condição de pagamento já selecionada contra o tipo do cliente
         if hasattr(self, 'cond_pag_var') and self.cond_pag_var.get().strip():
             self.validar_compatibilidade_pagamento()
         
         self.atualizar_visibilidade_botao_pdf()
 
     def on_enter_vendedor(self, event):
-        """Valida vendedor e navega para condição de pagamento quando pressiona Enter"""
         self.on_vendedor_focus_out(event)
         self.cond_pag_entry.focus()
         
     def on_enter_cond_pagamento(self, event):
-        """Valida condição de pagamento e navega para código do produto quando pressiona Enter"""
         self.on_cond_pag_focus_out(event)
         self.produto_codigo_entry.focus()
         
     def on_enter_quantidade(self, event):
-        """Adiciona o item quando pressiona Enter na quantidade"""
         self.adicionar_item()
         
     def on_cliente_focus_out(self, event):
-        """Valida o cliente quando o campo perde o foco (mas não força validação)"""
         codigo_cliente = self.cliente_var.get().strip()
         
         if not codigo_cliente:
@@ -285,7 +238,6 @@ class MainApplication(tk.Frame):
                 self.cliente_selecionado = None
 
     def on_enter_cliente(self, event):
-        """Valida cliente e navega para vendedor quando pressiona Enter"""
         self.on_cliente_focus_out(event)
         self.vendedor_entry.focus()
     
@@ -310,11 +262,11 @@ class MainApplication(tk.Frame):
                 self.produto_qtd_entry.focus()
             else:
                 messagebox.showwarning("Atenção", f"Produto com código '{codigo_produto}' não encontrado.")
-                self.produto_codigo_entry.delete(0, 'end')  
+                self.produto_codigo_entry.delete(0, 'end')
                 self.produto_codigo_entry.focus()
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao buscar produto: {e}")
-            self.produto_codigo_entry.delete(0, 'end')  
+            self.produto_codigo_entry.delete(0, 'end')
             self.produto_codigo_entry.focus()
     
     def on_enter_orcamento(self, event):
@@ -322,16 +274,13 @@ class MainApplication(tk.Frame):
         self.carregar_orcamento_existente(num_orcamento)
 
     def open_search_vendedor(self):
-        """Abre janela de seleção de vendedor"""
         VendedorSearchWindow(self.parent, self.on_vendedor_selecionado)
     
     def on_vendedor_selecionado(self, vendedor_data):
-        """Callback quando um vendedor é selecionado"""
         self.vendedor_var.set(f"{vendedor_data['codigo']} - {vendedor_data['nome']}")
         self.cond_pag_entry.focus()
     
     def on_vendedor_focus_out(self, event):
-        """Valida vendedor ao perder foco"""
         vendedor_texto = self.vendedor_var.get().strip()
         if vendedor_texto:
             codigo = vendedor_texto.split(' - ')[0] if ' - ' in vendedor_texto else vendedor_texto
@@ -350,16 +299,13 @@ class MainApplication(tk.Frame):
                 self.vendedor_var.set("")
 
     def open_search_cond_pagamento(self):
-        """Abre janela de seleção de condição de pagamento"""
         CondicaoPagamentoSearchWindow(self.parent, self.on_cond_pag_selecionada)
     
     def on_cond_pag_selecionada(self, cond_pag_data):
-        """Callback quando uma condição de pagamento é selecionada"""
         self.cond_pag_var.set(f"{cond_pag_data['codigo']} - {cond_pag_data['descricao']}")
         self.produto_codigo_entry.focus()
     
     def on_cond_pag_focus_out(self, event):
-        """Valida condição de pagamento ao perder foco"""
         cond_pag_texto = self.cond_pag_var.get().strip()
         if cond_pag_texto:
             codigo = cond_pag_texto.split(' - ')[0] if ' - ' in cond_pag_texto else cond_pag_texto
@@ -373,14 +319,12 @@ class MainApplication(tk.Frame):
             
             if cond_pag:
                 self.cond_pag_var.set(f"{cond_pag['codigo']} - {cond_pag['descricao']}")
-                # Validar compatibilidade com tipo de cliente
                 self.validar_compatibilidade_pagamento()
             else:
                 messagebox.showwarning("Atenção", f"Condição de pagamento com código '{codigo}' não encontrada.")
                 self.cond_pag_var.set("")
 
     def validar_compatibilidade_pagamento(self):
-        """Valida se o tipo de pagamento é compatível com o tipo de cliente"""
         if not self.cliente_selecionado:
             return True
         
@@ -388,11 +332,9 @@ class MainApplication(tk.Frame):
         if not cond_pag_texto:
             return True
         
-        # Obter código da condição de pagamento
         codigo = cond_pag_texto.split(' - ')[0] if ' - ' in cond_pag_texto else cond_pag_texto
         codigo = codigo.strip()
         
-        # Buscar condição de pagamento detalhada para obter VISPRA_CPG
         condicoes = get_condicoes_pagamento_detalhadas()
         cond_pag_detalhada = None
         
@@ -404,7 +346,6 @@ class MainApplication(tk.Frame):
         if not cond_pag_detalhada:
             return True
         
-        # Validar tipo de pagamento contra tipo de cliente
         tipo_cli = self.cliente_selecionado.get('tipo_cli', '1')
         vispra_cpg = cond_pag_detalhada.get('tipo_pagamento')
         
@@ -425,7 +366,6 @@ class MainApplication(tk.Frame):
         return True
     
     def _get_descricao_tipo_cli(self, tipo_cli):
-        """Retorna descrição do tipo de cliente"""
         tipos = {
             '1': 'A VISTA',
             '2': 'CHEQUE PRE',
@@ -439,28 +379,22 @@ class MainApplication(tk.Frame):
         return tipos.get(tipo_cli, 'NÃO DEFINIDO')
     
     def validar_limite_credito(self):
-        """Valida se o valor do orçamento está dentro do limite de crédito do cliente"""
         if not self.cliente_selecionado:
             return True
         
         bk_cli = self.cliente_selecionado.get('bk_cli', '1')
         
-        # Se BK_CLI = '1', não limita crédito
         if bk_cli == '1':
             return True
         
-        # Obter limite de crédito de BL_CLI
         bl_cli = self.cliente_selecionado.get('bl_cli', Decimal('0.0'))
         
-        # Se não tiver limite definido ou for zero, não limita
         if not bl_cli or bl_cli <= 0:
             print(f"⚠ BL_CLI não definido ou zero, validação de limite não aplicada")
             return True
         
-        # Usar o total do orçamento já calculado (self.valor_final considera descontos)
         total_orcamento = self.valor_final if hasattr(self, 'valor_final') else self.total_orcamento
         
-        # Verificar se excedeu o limite
         if total_orcamento > bl_cli:
             mensagem = (
                 f"Valor do orçamento excede o limite de crédito do cliente!\n\n"
@@ -473,7 +407,6 @@ class MainApplication(tk.Frame):
             
             from tkinter import simpledialog
             
-            # Buscar configuração de senha (mesma do desconto)
             desconto_config = get_desconto_config()
             senha_correta = desconto_config.get('senha_liberacao', str(datetime.now().day))
             
@@ -516,7 +449,7 @@ class MainApplication(tk.Frame):
                 "Não = Apenas criar novo"
             )
             
-            if resposta:  
+            if resposta:
                 self.reimprimir_orcamento_faturado(numero_nota, cabecalho)
             
             self.novo_orcamento()
@@ -549,7 +482,6 @@ class MainApplication(tk.Frame):
         desconto_total = Decimal('0.0')
         total_bruto = Decimal('0.0')
         for item in itens:
-            # Buscar desconto máximo do produto
             produto_info = get_produto_por_codigo(item['codigo'])
             desconto_maximo = produto_info.get('desconto_maximo', Decimal('0.0')) if produto_info else Decimal('0.0')
             
@@ -662,8 +594,6 @@ class MainApplication(tk.Frame):
             self.total_var.set(f"TOTAL: R$ {self.total_orcamento:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
     
     def abrir_janela_desconto(self):
-        """Abre a janela para aplicar desconto"""
-        # Verifica se já existe uma janela de desconto aberta
         if self.janela_desconto_aberta:
             messagebox.showinfo("Aviso", "Já existe uma janela de desconto aberta.")
             return
@@ -672,10 +602,8 @@ class MainApplication(tk.Frame):
             messagebox.showwarning("Aviso", "Adicione produtos ao orçamento antes de aplicar desconto.")
             return
         
-        # Marca que a janela está aberta
         self.janela_desconto_aberta = True
         
-        # Passa a lista de itens com os limites de desconto individuais
         DescontoWindow(
             self.parent, 
             float(self.total_orcamento), 
@@ -685,14 +613,9 @@ class MainApplication(tk.Frame):
         )
     
     def resetar_flag_desconto(self):
-        """Reseta a flag de janela de desconto aberta"""
         self.janela_desconto_aberta = False
     
     def validar_e_distribuir_desconto(self, percentual_desconto):
-        """
-        Valida se o desconto pode ser aplicado respeitando os limites de cada produto.
-        Retorna (sucesso, mensagem, desconto_total_calculado, desconto_por_item)
-        """
         if not self.itens_para_salvar:
             return False, "Não há itens no orçamento", Decimal('0.0'), []
         
@@ -700,16 +623,13 @@ class MainApplication(tk.Frame):
         desconto_por_item = []
         desconto_aplicado_total = Decimal('0.0')
         
-        # Primeira passagem: aplicar desconto proporcional respeitando limites
         for item in self.itens_para_salvar:
             proporcao = item['subtotal'] / self.total_orcamento if self.total_orcamento > 0 else Decimal('0')
             desconto_desejado = desconto_total_desejado * proporcao
             
-            # Calcular o desconto máximo permitido para este item
             desconto_max_item = item.get('desconto_maximo', Decimal('0.0'))
             desconto_max_valor = (item['subtotal'] * desconto_max_item) / Decimal('100') if desconto_max_item > 0 else item['subtotal']
             
-            # Aplicar o menor entre o desconto desejado e o máximo permitido
             desconto_item = min(desconto_desejado, desconto_max_valor)
             
             desconto_por_item.append({
@@ -720,15 +640,12 @@ class MainApplication(tk.Frame):
             })
             desconto_aplicado_total += desconto_item
         
-        # Se não conseguiu aplicar todo o desconto, tentar redistribuir
         desconto_faltante = desconto_total_desejado - desconto_aplicado_total
         
-        if desconto_faltante > Decimal('0.01'):  # Tolerância de 1 centavo
-            # Verificar quais itens ainda têm margem
+        if desconto_faltante > Decimal('0.01'):
             itens_com_margem = [d for d in desconto_por_item if d['pode_mais']]
             
             if not itens_com_margem:
-                # Nenhum item tem margem para mais desconto
                 percentual_real = (desconto_aplicado_total / self.total_orcamento * 100) if self.total_orcamento > 0 else Decimal('0')
                 return False, (
                     f"Não é possível aplicar {percentual_desconto:.1f}% de desconto.\\n\\n"
@@ -741,9 +658,7 @@ class MainApplication(tk.Frame):
                     ])
                 ), desconto_aplicado_total, desconto_por_item
             
-            # Redistribuir o desconto faltante nos itens com margem
             while desconto_faltante > Decimal('0.01') and itens_com_margem:
-                # Distribuir proporcionalmente entre itens com margem
                 margem_total = sum(d['desconto_maximo_valor'] - d['desconto_aplicado'] for d in itens_com_margem)
                 
                 if margem_total <= Decimal('0'):
@@ -767,8 +682,7 @@ class MainApplication(tk.Frame):
                     if desconto_faltante <= Decimal('0.01'):
                         break
         
-        # Verificar se conseguiu aplicar o desconto dentro da tolerância
-        if abs(desconto_aplicado_total - desconto_total_desejado) > Decimal('0.50'):  # Tolerância de 50 centavos
+        if abs(desconto_aplicado_total - desconto_total_desejado) > Decimal('0.50'):
             percentual_real = (desconto_aplicado_total / self.total_orcamento * 100) if self.total_orcamento > 0 else Decimal('0')
             return False, (
                 f"Desconto de {percentual_desconto:.1f}% excede o limite de alguns produtos.\\n\\n"
@@ -779,28 +693,23 @@ class MainApplication(tk.Frame):
         return True, "Desconto validado com sucesso", desconto_aplicado_total, desconto_por_item
     
     def aplicar_desconto_callback(self, valor_desconto, percentual, valor_final):
-        """Callback chamado quando o desconto é aplicado (validação já feita na janela)"""
         self.desconto_aplicado = Decimal(str(valor_desconto))
         self.percentual_desconto = Decimal(str(percentual))
         self.valor_final = Decimal(str(valor_final))
         self.atualizar_total()
     
     def limpar_desconto(self):
-        """Remove o desconto aplicado"""
         self.desconto_aplicado = Decimal('0.0')
         self.percentual_desconto = Decimal('0.0')
         self.valor_final = self.total_orcamento
         self.atualizar_total()
     
     def excluir_item_selecionado(self):
-        """Exclui o item selecionado do orçamento"""
-        # Verifica se há item selecionado
         selected_item = self.items_treeview.selection()
         if not selected_item:
             messagebox.showinfo("Informação", "Selecione um item para excluir.")
             return
         
-        # Verifica se o orçamento já foi transformado em pedido
         if (self.modo_edicao and hasattr(self, 'orcamento_status') and 
             self.orcamento_status is not None and self.orcamento_status != '' and 
             self.orcamento_status != '8'):
@@ -811,7 +720,6 @@ class MainApplication(tk.Frame):
             )
             return
         
-        # Pega informações do item para mostrar na confirmação
         item_id = selected_item[0]
         item_values = self.items_treeview.item(item_id)['values']
         codigo = item_values[0]
@@ -819,7 +727,6 @@ class MainApplication(tk.Frame):
         quantidade = item_values[2]
         valor_total = item_values[5]
         
-        # Confirmação de exclusão
         resposta = messagebox.askyesno(
             "Confirmar Exclusão",
             f"Deseja realmente excluir este item?\n\n"
@@ -833,34 +740,25 @@ class MainApplication(tk.Frame):
         if not resposta:
             return
         
-        # Remove da treeview
         self.items_treeview.delete(item_id)
         
-        # Remove da lista de itens para salvar
         self.itens_para_salvar = [item for item in self.itens_para_salvar if item['id'] != item_id]
         
-        # Atualiza o total
         self.atualizar_total()
         
-        # Atualiza visibilidade do botão PDF
         self.atualizar_visibilidade_botao_pdf()
         
-        # Foca no campo de produto para facilitar adicionar novo item
         self.produto_codigo_entry.focus()
     
     def on_treeview_right_click(self, event):
-        """Mostra menu de contexto ao clicar com botão direito"""
-        # Seleciona o item clicado
         item_id = self.items_treeview.identify_row(event.y)
         if item_id:
             self.items_treeview.selection_set(item_id)
             self.items_treeview.focus(item_id)
             
-            # Cria menu de contexto
             context_menu = tk.Menu(self.parent, tearoff=0)
             context_menu.add_command(label="Excluir Item", command=self.excluir_item_selecionado)
             
-            # Mostra o menu na posição do cursor
             try:
                 context_menu.tk_popup(event.x_root, event.y_root)
             finally:
@@ -941,7 +839,6 @@ class MainApplication(tk.Frame):
             messagebox.showwarning("Atenção", "Adicione pelo menos um item ao orçamento.")
             return
 
-        # Validar limite de crédito se cliente selecionado
         if self.cliente_selecionado:
             if not self.validar_limite_credito():
                 return
@@ -1056,7 +953,6 @@ class MainApplication(tk.Frame):
             sucesso, mensagem = salvar_orcamento(orcamento_obj, itens_list)
 
         if sucesso:
-            # Pergunta se deseja imprimir após salvar
             imprimir = messagebox.askyesno(
                 "Orçamento Salvo",
                 f"{mensagem}\n\nDeseja gerar o PDF do orçamento agora?",
@@ -1076,7 +972,6 @@ class MainApplication(tk.Frame):
             messagebox.showerror("Erro ao Salvar", mensagem)
 
     def reimprimir_orcamento_faturado(self, numero_nota, cabecalho):
-        """Gera PDF de um orçamento já faturado para reimpressão"""
         try:
             cliente = None
             if cabecalho['codigo_cliente'].strip():
@@ -1144,7 +1039,6 @@ class MainApplication(tk.Frame):
             messagebox.showerror("Erro", f"Erro ao gerar reimpressão: {e}")
 
     def gerar_pdf_orcamento_atual(self):
-        """Gera PDF do orçamento atual (já salvo)"""
         if not self.modo_edicao:
             messagebox.showwarning("Atenção", "Este orçamento ainda não foi salvo. Salve primeiro antes de gerar o PDF.")
             return
@@ -1169,7 +1063,7 @@ class MainApplication(tk.Frame):
             if self.cliente_selecionado:
                 cod_cliente = self.cliente_selecionado['codigo']
             else:
-                cod_cliente = '' 
+                cod_cliente = ''
             
         except (KeyError, IndexError, TypeError, ValueError) as e:
             messagebox.showerror("Erro", f"Dados do cabeçalho inválidos. Verifique as seleções.\nDetalhe: {e}")
@@ -1193,7 +1087,6 @@ class MainApplication(tk.Frame):
             messagebox.showerror("Erro", f"Erro ao gerar PDF: {e}")
 
     def atualizar_visibilidade_botao_pdf(self):
-        """Controla quando o botão PDF deve estar visível - apenas em orçamentos já salvos"""
         if self.modo_edicao and self.items_treeview.get_children():
             self.pdf_button.pack(side="right", padx=5, before=self.save_button)
         else:
@@ -1205,8 +1098,8 @@ class MainApplication(tk.Frame):
         
         self.itens_para_salvar.clear()
         self.cliente_var.set("")
-        self.vendedor_var.set("")  
-        self.cond_pag_var.set("")  
+        self.vendedor_var.set("")
+        self.cond_pag_var.set("")
         self.cliente_selecionado = None
         self.limpar_desconto()
         self.atualizar_total()
@@ -1307,7 +1200,7 @@ class MainApplication(tk.Frame):
         columns = ('cod', 'desc', 'qtd', 'un', 'vlr_unit', 'vlr_total')
         self.items_treeview = ttk.Treeview(items_frame, columns=columns, show='headings')
         self.items_treeview.bind("<Double-1>", self.on_treeview_double_click)
-        self.items_treeview.bind("<Button-3>", self.on_treeview_right_click)  # Botão direito do mouse
+        self.items_treeview.bind("<Button-3>", self.on_treeview_right_click)
         
         self.items_treeview.heading('cod', text='Código')
         self.items_treeview.heading('desc', text='Descrição')

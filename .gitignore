@@ -33,6 +33,7 @@ desktop.ini
 
 # Project specific
 Impressao/
+config/config.ini
 
 # Logs
 *.log
