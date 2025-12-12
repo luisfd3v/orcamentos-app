@@ -13,16 +13,18 @@ except ImportError:
 
 
 class DescontoWindow:
-    def __init__(self, parent, valor_total, callback_desconto=None, desconto_vendedor_info=None, callback_fechar=None):
+    def __init__(self, parent, valor_total, callback_desconto=None, itens_orcamento=None, callback_fechar=None):
         self.parent = parent
         self.valor_total = Decimal(str(valor_total))
         self.callback_desconto = callback_desconto
         self.callback_fechar = callback_fechar
         self.desconto_config = get_desconto_config()
-        self.desconto_vendedor_info = desconto_vendedor_info or {}
+        self.itens_orcamento = itens_orcamento or []
         self.desconto_aplicado = Decimal('0')
         self.valor_final = self.valor_total
         self.updating = False
+        
+        self.desconto_medio_produtos = self._calcular_desconto_medio()
         
         self.window = tk.Toplevel(parent)
         self.window.title("Sistema de Desconto")
@@ -30,7 +32,6 @@ class DescontoWindow:
         self.window.transient(parent)
         self.window.grab_set()
         
-        # Configura protocolo de fechamento
         self.window.protocol("WM_DELETE_WINDOW", self.fechar_janela)
         
         self.window.update_idletasks()
@@ -39,9 +40,25 @@ class DescontoWindow:
         self.window.geometry(f"+{x}+{y}")
         
         self.setup_ui()
+    
+    def _calcular_desconto_medio(self):
+        if not self.itens_orcamento:
+            return Decimal('0.0')
+        
+        total_valor = Decimal('0.0')
+        desconto_ponderado = Decimal('0.0')
+        
+        for item in self.itens_orcamento:
+            subtotal = item.get('subtotal', Decimal('0.0'))
+            desconto_max = item.get('desconto_maximo', Decimal('0.0'))
+            total_valor += subtotal
+            desconto_ponderado += (subtotal * desconto_max)
+        
+        if total_valor > 0:
+            return desconto_ponderado / total_valor
+        return Decimal('0.0')
         
     def setup_ui(self):
-        """Configura a interface da janela de desconto"""
         main_frame = ttk.Frame(self.window, padding="20")
         main_frame.grid(row=0, column=0, sticky="nsew")
         
@@ -56,11 +73,9 @@ class DescontoWindow:
         ttk.Label(info_frame, text=f"R$ {self.valor_total:.2f}".replace('.', ','), 
                  font=('Arial', 10, 'bold')).grid(row=0, column=1, sticky="e", padx=(20, 0))
         
-        # Mostrar limite configurado
-        if self.desconto_vendedor_info and self.desconto_vendedor_info.get('vendedor_encontrado', False):
-            limite = self.desconto_vendedor_info.get('desconto_max', 0)
-            ttk.Label(info_frame, text="Limite sem senha:").grid(row=1, column=0, sticky="w")
-            ttk.Label(info_frame, text=f"{limite:.1f}%", 
+        if self.desconto_medio_produtos > 0:
+            ttk.Label(info_frame, text="Limite médio:").grid(row=1, column=0, sticky="w")
+            ttk.Label(info_frame, text=f"{self.desconto_medio_produtos:.1f}%", 
                      font=('Arial', 10, 'bold'), foreground='blue').grid(row=1, column=1, sticky="e", padx=(20, 0))
         else:
             ttk.Label(info_frame, text="Limite:").grid(row=1, column=0, sticky="w")
@@ -114,7 +129,6 @@ class DescontoWindow:
         self.window.bind('<Return>', lambda e: self.aplicar_desconto())
         
     def safe_decimal(self, value_str):
-        """Converte string para Decimal de forma segura"""
         if not value_str:
             return Decimal('0')
         try:
@@ -126,7 +140,6 @@ class DescontoWindow:
             return Decimal('0')
         
     def on_percentual_change(self, *args):
-        """Atualiza o campo valor quando percentual muda"""
         if self.updating:
             return
             
@@ -149,7 +162,6 @@ class DescontoWindow:
             self.updating = False
             
     def on_valor_change(self, *args):
-        """Atualiza o campo percentual quando valor muda"""
         if self.updating:
             return
             
@@ -180,7 +192,6 @@ class DescontoWindow:
             self.updating = False
             
     def calcular_e_atualizar_resultado(self, valor_desconto):
-        """Atualiza os labels de resultado"""
         self.desconto_aplicado = valor_desconto
         self.valor_final = self.valor_total - self.desconto_aplicado
         
@@ -188,40 +199,67 @@ class DescontoWindow:
         self.valor_final_label.config(text=f"R$ {self.valor_final:.2f}".replace('.', ','))
             
     def verificar_limite_desconto(self):
-        """Verifica se o desconto está dentro do limite permitido"""
         if self.desconto_aplicado == 0:
             return True
-            
-        percentual_desconto = (self.desconto_aplicado / self.valor_total) * 100 if self.valor_total > 0 else 0
         
-        if self.desconto_vendedor_info and self.desconto_vendedor_info.get('vendedor_encontrado', False):
-            limite = self.desconto_vendedor_info.get('desconto_max', 0)
-        else:
-            messagebox.showerror("Erro", "Limite de desconto não configurado no arquivo config.ini.")
+        if not self.itens_orcamento:
+            messagebox.showerror("Erro", "Não há itens no orçamento para validar o desconto.")
             self.percentual_entry.focus_set()
             return False
         
-        if percentual_desconto <= limite:
-            return True
+        percentual_desconto = (self.desconto_aplicado / self.valor_total) * 100 if self.valor_total > 0 else 0
+        
+        produtos_com_limite_excedido = []
+        desconto_max_possivel = Decimal('0.0')
+        
+        for item in self.itens_orcamento:
+            desconto_max_item = item.get('desconto_maximo', Decimal('0.0'))
+            subtotal = item.get('subtotal', Decimal('0.0'))
             
+            proporcao = subtotal / self.valor_total if self.valor_total > 0 else Decimal('0')
+            desconto_proporcional_item = percentual_desconto
+            
+            if desconto_proporcional_item > desconto_max_item:
+                produtos_com_limite_excedido.append({
+                    'descricao': item.get('descricao', 'Produto'),
+                    'limite': desconto_max_item,
+                    'tentado': desconto_proporcional_item
+                })
+            
+            desconto_max_valor_item = (subtotal * desconto_max_item) / Decimal('100')
+            desconto_max_possivel += desconto_max_valor_item
+        
+        if not produtos_com_limite_excedido:
+            return True
+        
+        percentual_max_possivel = (desconto_max_possivel / self.valor_total * 100) if self.valor_total > 0 else Decimal('0')
+        
+        mensagem_produtos = "\n".join([
+            f"• {p['descricao'][:30]}: máx {p['limite']:.1f}%"
+            for p in produtos_com_limite_excedido[:5]
+        ])
+        
+        if len(produtos_com_limite_excedido) > 5:
+            mensagem_produtos += f"\n... e mais {len(produtos_com_limite_excedido) - 5} produto(s)"
+        
         senha = simpledialog.askstring(
             "Autorização Necessária",
-            f"Desconto de {percentual_desconto:.1f}% excede o limite configurado de {limite:.1f}%.\n\nDigite a senha de liberação:",
+            f"Desconto de {percentual_desconto:.1f}% excede o limite de alguns produtos:\n\n"
+            f"{mensagem_produtos}\n\n"
+            f"Desconto máximo sem senha: {percentual_max_possivel:.2f}%\n\n"
+            f"Digite a senha de liberação para aplicar {percentual_desconto:.1f}%:",
             show='*',
             parent=self.window
         )
         
-        # Se cancelou, retorna foco ao campo
         if senha is None:
             self.percentual_entry.focus_set()
             self.percentual_entry.select_range(0, tk.END)
             return False
         
-        # Verifica a senha
         if senha == self.desconto_config['senha_liberacao']:
             return True
         else:
-            # Senha incorreta - mostra erro e retorna foco ao campo
             messagebox.showerror(
                 "Senha Incorreta",
                 "Senha incorreta! Desconto não autorizado.",
@@ -232,7 +270,6 @@ class DescontoWindow:
             return False
             
     def aplicar_desconto(self):
-        """Aplica o desconto após verificar permissões"""
         if not self.desconto_config['habilitar_desconto']:
             messagebox.showwarning("Aviso", "Sistema de desconto está desabilitado.")
             return
@@ -255,7 +292,6 @@ class DescontoWindow:
         self.fechar_janela()
 
     def limpar_desconto(self):
-        """Remove o desconto aplicado e fecha a janela"""
         if self.callback_desconto:
             self.callback_desconto(0.0, 0.0, float(self.valor_total))
             
@@ -263,14 +299,12 @@ class DescontoWindow:
         self.fechar_janela()
     
     def fechar_janela(self):
-        """Fecha a janela e chama o callback de fechamento"""
         if self.callback_fechar:
             self.callback_fechar()
         self.window.destroy()
 
 
 def main():
-    """Função para testar a janela independentemente"""
     root = tk.Tk()
     root.withdraw()
     

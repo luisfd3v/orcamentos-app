@@ -535,7 +535,7 @@ def buscar_produtos(codigo=None, nome=None, termo_inteligente=None):
     try:
         cursor = conn.cursor()
         query = """
-            SELECT p.AU_ITE, p.AB_ITE, u.AB_UNI, pa.PrecoVendaMax, pa.CustoMedio
+            SELECT p.AU_ITE, p.AB_ITE, u.AB_UNI, pa.PrecoVendaMax, pa.CustoMedio, pa.DescontoMaximo
             FROM CE_PRODUTO p
             LEFT JOIN AUNIDACE u ON p.AH_ITE = u.AA_UNI
             LEFT JOIN CE_PRODUTOS_ADICIONAIS pa ON p.AU_ITE = pa.CodReduzido
@@ -562,7 +562,8 @@ def buscar_produtos(codigo=None, nome=None, termo_inteligente=None):
                 'descricao': row.AB_ITE.strip() if row.AB_ITE else '',
                 'unidade': row.AB_UNI.strip() if row.AB_UNI else 'UN',
                 'preco': Decimal(row.PrecoVendaMax or '0.0'),
-                'custo': Decimal(row.CustoMedio or '0.0')
+                'custo': Decimal(row.CustoMedio or '0.0'),
+                'desconto_maximo': Decimal(row.DescontoMaximo or '0.0')
             })
         
         if termo_inteligente and produtos:

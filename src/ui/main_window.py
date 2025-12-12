@@ -424,6 +424,10 @@ class MainApplication(tk.Frame):
         desconto_total = Decimal('0.0')
         total_bruto = Decimal('0.0')
         for item in itens:
+            # Buscar desconto máximo do produto
+            produto_info = get_produto_por_codigo(item['codigo'])
+            desconto_maximo = produto_info.get('desconto_maximo', Decimal('0.0')) if produto_info else Decimal('0.0')
+            
             item_id = self.items_treeview.insert('', 'end', values=(
                 item['codigo'], item['descricao'],
                 f"{item['quantidade']:.2f}".replace('.',','), item['unidade'],
@@ -432,7 +436,8 @@ class MainApplication(tk.Frame):
             self.itens_para_salvar.append({
                 'id': item_id, 'codigo': item['codigo'], 'quantidade': item['quantidade'],
                 'valor_unitario': item['preco'], 'custo': item['custo'],
-                'subtotal': item['subtotal'], 'descricao': item['descricao'], 'unidade': item['unidade']
+                'subtotal': item['subtotal'], 'descricao': item['descricao'], 'unidade': item['unidade'],
+                'desconto_maximo': desconto_maximo
             })
             total_bruto += item['subtotal']
             if 'desconto' in item:
@@ -504,7 +509,8 @@ class MainApplication(tk.Frame):
             'custo': produto['custo'],
             'subtotal': subtotal,
             'descricao': produto['descricao'],
-            'unidade': produto['unidade']
+            'unidade': produto['unidade'],
+            'desconto_maximo': produto.get('desconto_maximo', Decimal('0.0'))
         })
 
         self.produto_codigo_entry.delete(0, 'end')
@@ -544,14 +550,12 @@ class MainApplication(tk.Frame):
         # Marca que a janela está aberta
         self.janela_desconto_aberta = True
         
-        desconto_vendedor_info = get_desconto_padrao_config()
-        
-        # Passa o callback de fechamento para resetar a flag
+        # Passa a lista de itens com os limites de desconto individuais
         DescontoWindow(
             self.parent, 
             float(self.total_orcamento), 
-            self.aplicar_desconto_callback, 
-            desconto_vendedor_info,
+            self.aplicar_desconto_callback,
+            self.itens_para_salvar,
             self.resetar_flag_desconto
         )
     
@@ -559,8 +563,98 @@ class MainApplication(tk.Frame):
         """Reseta a flag de janela de desconto aberta"""
         self.janela_desconto_aberta = False
     
+    def validar_e_distribuir_desconto(self, percentual_desconto):
+        """
+        Valida se o desconto pode ser aplicado respeitando os limites de cada produto.
+        Retorna (sucesso, mensagem, desconto_total_calculado, desconto_por_item)
+        """
+        if not self.itens_para_salvar:
+            return False, "Não há itens no orçamento", Decimal('0.0'), []
+        
+        desconto_total_desejado = (self.total_orcamento * percentual_desconto) / Decimal('100')
+        desconto_por_item = []
+        desconto_aplicado_total = Decimal('0.0')
+        
+        # Primeira passagem: aplicar desconto proporcional respeitando limites
+        for item in self.itens_para_salvar:
+            proporcao = item['subtotal'] / self.total_orcamento if self.total_orcamento > 0 else Decimal('0')
+            desconto_desejado = desconto_total_desejado * proporcao
+            
+            # Calcular o desconto máximo permitido para este item
+            desconto_max_item = item.get('desconto_maximo', Decimal('0.0'))
+            desconto_max_valor = (item['subtotal'] * desconto_max_item) / Decimal('100') if desconto_max_item > 0 else item['subtotal']
+            
+            # Aplicar o menor entre o desconto desejado e o máximo permitido
+            desconto_item = min(desconto_desejado, desconto_max_valor)
+            
+            desconto_por_item.append({
+                'item': item,
+                'desconto_aplicado': desconto_item,
+                'desconto_maximo_valor': desconto_max_valor,
+                'pode_mais': desconto_item < desconto_max_valor
+            })
+            desconto_aplicado_total += desconto_item
+        
+        # Se não conseguiu aplicar todo o desconto, tentar redistribuir
+        desconto_faltante = desconto_total_desejado - desconto_aplicado_total
+        
+        if desconto_faltante > Decimal('0.01'):  # Tolerância de 1 centavo
+            # Verificar quais itens ainda têm margem
+            itens_com_margem = [d for d in desconto_por_item if d['pode_mais']]
+            
+            if not itens_com_margem:
+                # Nenhum item tem margem para mais desconto
+                percentual_real = (desconto_aplicado_total / self.total_orcamento * 100) if self.total_orcamento > 0 else Decimal('0')
+                return False, (
+                    f"Não é possível aplicar {percentual_desconto:.1f}% de desconto.\\n\\n"
+                    f"Alguns produtos têm limite inferior a esse percentual.\\n"
+                    f"Desconto máximo possível: {percentual_real:.2f}%\\n\\n"
+                    f"Detalhes dos limites por produto:\\n" +
+                    "\\n".join([
+                        f"• {d['item']['descricao'][:30]}: máx {d['item'].get('desconto_maximo', 0):.1f}%"
+                        for d in desconto_por_item
+                    ])
+                ), desconto_aplicado_total, desconto_por_item
+            
+            # Redistribuir o desconto faltante nos itens com margem
+            while desconto_faltante > Decimal('0.01') and itens_com_margem:
+                # Distribuir proporcionalmente entre itens com margem
+                margem_total = sum(d['desconto_maximo_valor'] - d['desconto_aplicado'] for d in itens_com_margem)
+                
+                if margem_total <= Decimal('0'):
+                    break
+                
+                for d in itens_com_margem[:]:
+                    margem_disponivel = d['desconto_maximo_valor'] - d['desconto_aplicado']
+                    if margem_disponivel <= Decimal('0.01'):
+                        itens_com_margem.remove(d)
+                        continue
+                    
+                    proporcao_margem = margem_disponivel / margem_total if margem_total > 0 else Decimal('0')
+                    desconto_adicional = min(desconto_faltante * proporcao_margem, margem_disponivel)
+                    
+                    d['desconto_aplicado'] += desconto_adicional
+                    desconto_aplicado_total += desconto_adicional
+                    desconto_faltante -= desconto_adicional
+                    
+                    d['pode_mais'] = d['desconto_aplicado'] < d['desconto_maximo_valor']
+                    
+                    if desconto_faltante <= Decimal('0.01'):
+                        break
+        
+        # Verificar se conseguiu aplicar o desconto dentro da tolerância
+        if abs(desconto_aplicado_total - desconto_total_desejado) > Decimal('0.50'):  # Tolerância de 50 centavos
+            percentual_real = (desconto_aplicado_total / self.total_orcamento * 100) if self.total_orcamento > 0 else Decimal('0')
+            return False, (
+                f"Desconto de {percentual_desconto:.1f}% excede o limite de alguns produtos.\\n\\n"
+                f"Desconto máximo aplicável: {percentual_real:.2f}% (R$ {desconto_aplicado_total:.2f})\\n\\n"
+                "Deseja aplicar este desconto reduzido?"
+            ), desconto_aplicado_total, desconto_por_item
+        
+        return True, "Desconto validado com sucesso", desconto_aplicado_total, desconto_por_item
+    
     def aplicar_desconto_callback(self, valor_desconto, percentual, valor_final):
-        """Callback chamado quando o desconto é aplicado"""
+        """Callback chamado quando o desconto é aplicado (validação já feita na janela)"""
         self.desconto_aplicado = Decimal(str(valor_desconto))
         self.percentual_desconto = Decimal(str(percentual))
         self.valor_final = Decimal(str(valor_final))
