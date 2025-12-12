@@ -347,7 +347,7 @@ def buscar_clientes(codigo=None, nome=None, termo_inteligente=None):
     clientes = []
     try:
         cursor = conn.cursor()
-        query = "SELECT CODIGO_CLI, NOME_CLI, CGCCPF_CLI, ENDER_CLI, NUMER_CLI, DDD_CLI, TELEF_CLI FROM ACLIENGE"
+        query = "SELECT CODIGO_CLI, NOME_CLI, CGCCPF_CLI, ENDER_CLI, NUMER_CLI, DDD_CLI, TELEF_CLI, TIPO_CLI, BK_CLI, BL_CLI FROM ACLIENGE"
         params = []
         
         if termo_inteligente:
@@ -372,7 +372,10 @@ def buscar_clientes(codigo=None, nome=None, termo_inteligente=None):
                 'nome': row.NOME_CLI.strip() if row.NOME_CLI else '',
                 'cpf_cnpj': row.CGCCPF_CLI.strip() if row.CGCCPF_CLI else '',
                 'endereco': endereco,
-                'telefone': telefone
+                'telefone': telefone,
+                'tipo_cli': row.TIPO_CLI.strip() if row.TIPO_CLI else '1',
+                'bk_cli': row.BK_CLI.strip() if row.BK_CLI else '1',
+                'bl_cli': Decimal(row.BL_CLI) if row.BL_CLI is not None else Decimal('0.0')
             })
         
         if termo_inteligente and clientes:
@@ -478,6 +481,58 @@ def condicao_permite_sem_cliente(codigo_condicao):
         return False
     finally:
         if conn: conn.close()
+
+def validar_tipo_pagamento_permitido(tipo_cli, vispra_cpg):
+    """
+    Valida se o tipo de cliente (TIPO_CLI) permite o tipo de pagamento (VISPRA_CPG).
+    
+    TIPO_CLI:
+    1 – A VISTA - dinheiro, cheque a vista e cartão (NÃO permite A PRAZO)
+    2 – CHEQUE PRE - dinheiro, cheque a vista, cartao e cheque pre
+    3 – CHEQUE TERCEIROS - dinheiro, cheque a vista, cartao e cheque pre
+    4 – SEMANAL - dinheiro, cheque a vista, cartao, cheque pre e a prazo
+    5 – QUINZENAL - dinheiro, cheque a vista, cartao, cheque pre e a prazo
+    6 – MENSAL - dinheiro, cheque a vista, cartao, cheque pre e a prazo
+    7 – GARANTIA - dinheiro, cheque a vista, cartao, cheque pre e a prazo
+    8 – AVULSO - dinheiro, cheque a vista, cartao, cheque pre e a prazo
+    
+    VISPRA_CPG:
+    1 – A VISTA
+    2 – A PRAZO
+    3 – CHEQUE
+    4 – CHEQUE PRE
+    5 – CARTAO CREDITO
+    6 – OUTROS
+    7 – CARTAO DEBITO
+    8 – TRANSFERENCIA
+    9 – PAGAMENTO DIGITAL
+    
+    Retorna: (is_valid: bool, mensagem: str)
+    """
+    tipo_cli = str(tipo_cli).strip()
+    
+    # Se não tiver vispra_cpg definido, permite
+    if not vispra_cpg:
+        return True, ""
+    
+    vispra_cpg = int(vispra_cpg)
+    
+    # TIPO_CLI = 1 (A VISTA): NÃO permite A PRAZO (2) nem CHEQUE PRE (4)
+    if tipo_cli == '1':
+        if vispra_cpg == 2:  # A PRAZO
+            return False, "Cliente cadastrado como 'A VISTA' não pode comprar a prazo."
+        if vispra_cpg == 4:  # CHEQUE PRE
+            return False, "Cliente cadastrado como 'A VISTA' não pode usar cheque pré-datado."
+    
+    # TIPO_CLI 2 e 3: Permite tudo exceto A PRAZO (2)
+    elif tipo_cli in ['2', '3']:
+        if vispra_cpg == 2:  # A PRAZO
+            return False, f"Cliente tipo '{tipo_cli}' não permite pagamento a prazo."
+    
+    # TIPO_CLI 4-8: Permite todos os tipos de pagamento
+    # Sem restrições
+    
+    return True, ""
 
 def _get_search_priority(item, termo_busca):
     termo_lower = termo_busca.lower()

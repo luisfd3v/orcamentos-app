@@ -9,7 +9,8 @@ import os
 from database import (get_proximo_numero_orcamento, get_vendedores, get_cliente_por_codigo,
                       get_condicoes_pagamento, get_produto_por_codigo, salvar_orcamento,
                       get_orcamento_cabecalho, get_orcamento_itens, atualizar_orcamento,
-                      condicao_permite_sem_cliente, get_deposito_config, get_desconto_config)
+                      condicao_permite_sem_cliente, get_deposito_config, get_desconto_config,
+                      validar_tipo_pagamento_permitido, get_condicoes_pagamento_detalhadas)
 from models import Orcamento, ItemOrcamento
 from pdf_generator import gerar_pdf_orcamento
 from ui.search_window import SearchWindow
@@ -239,6 +240,10 @@ class MainApplication(tk.Frame):
         if self.focus_get() == self.cliente_entry:
             self.vendedor_entry.focus()
         
+        # Validar condição de pagamento já selecionada contra o tipo do cliente
+        if hasattr(self, 'cond_pag_var') and self.cond_pag_var.get().strip():
+            self.validar_compatibilidade_pagamento()
+        
         self.atualizar_visibilidade_botao_pdf()
 
     def on_enter_vendedor(self, event):
@@ -368,9 +373,129 @@ class MainApplication(tk.Frame):
             
             if cond_pag:
                 self.cond_pag_var.set(f"{cond_pag['codigo']} - {cond_pag['descricao']}")
+                # Validar compatibilidade com tipo de cliente
+                self.validar_compatibilidade_pagamento()
             else:
                 messagebox.showwarning("Atenção", f"Condição de pagamento com código '{codigo}' não encontrada.")
                 self.cond_pag_var.set("")
+
+    def validar_compatibilidade_pagamento(self):
+        """Valida se o tipo de pagamento é compatível com o tipo de cliente"""
+        if not self.cliente_selecionado:
+            return True
+        
+        cond_pag_texto = self.cond_pag_var.get().strip()
+        if not cond_pag_texto:
+            return True
+        
+        # Obter código da condição de pagamento
+        codigo = cond_pag_texto.split(' - ')[0] if ' - ' in cond_pag_texto else cond_pag_texto
+        codigo = codigo.strip()
+        
+        # Buscar condição de pagamento detalhada para obter VISPRA_CPG
+        condicoes = get_condicoes_pagamento_detalhadas()
+        cond_pag_detalhada = None
+        
+        for cond in condicoes:
+            if cond['codigo'] == codigo or cond['codigo'] == codigo.zfill(2):
+                cond_pag_detalhada = cond
+                break
+        
+        if not cond_pag_detalhada:
+            return True
+        
+        # Validar tipo de pagamento contra tipo de cliente
+        tipo_cli = self.cliente_selecionado.get('tipo_cli', '1')
+        vispra_cpg = cond_pag_detalhada.get('tipo_pagamento')
+        
+        is_valid, mensagem = validar_tipo_pagamento_permitido(tipo_cli, vispra_cpg)
+        
+        if not is_valid:
+            messagebox.showerror(
+                "Pagamento Não Permitido",
+                f"{mensagem}\n\n"
+                f"Cliente: {self.cliente_selecionado['nome']}\n"
+                f"Tipo de Cliente: {self._get_descricao_tipo_cli(tipo_cli)}\n"
+                f"Forma de Pagamento: {cond_pag_detalhada['tipo_descricao']}\n\n"
+                "Por favor, selecione outra condição de pagamento."
+            )
+            self.cond_pag_var.set("")
+            return False
+        
+        return True
+    
+    def _get_descricao_tipo_cli(self, tipo_cli):
+        """Retorna descrição do tipo de cliente"""
+        tipos = {
+            '1': 'A VISTA',
+            '2': 'CHEQUE PRE',
+            '3': 'CHEQUE TERCEIROS',
+            '4': 'SEMANAL',
+            '5': 'QUINZENAL',
+            '6': 'MENSAL',
+            '7': 'GARANTIA',
+            '8': 'AVULSO'
+        }
+        return tipos.get(tipo_cli, 'NÃO DEFINIDO')
+    
+    def validar_limite_credito(self):
+        """Valida se o valor do orçamento está dentro do limite de crédito do cliente"""
+        if not self.cliente_selecionado:
+            return True
+        
+        bk_cli = self.cliente_selecionado.get('bk_cli', '1')
+        
+        # Se BK_CLI = '1', não limita crédito
+        if bk_cli == '1':
+            return True
+        
+        # Obter limite de crédito de BL_CLI
+        bl_cli = self.cliente_selecionado.get('bl_cli', Decimal('0.0'))
+        
+        # Se não tiver limite definido ou for zero, não limita
+        if not bl_cli or bl_cli <= 0:
+            print(f"⚠ BL_CLI não definido ou zero, validação de limite não aplicada")
+            return True
+        
+        # Calcular total do orçamento
+        total_orcamento = self.calcular_total()
+        
+        # Verificar se excedeu o limite
+        if total_orcamento > bl_cli:
+            mensagem = (
+                f"Valor do orçamento excede o limite de crédito do cliente!\n\n"
+                f"Cliente: {self.cliente_selecionado['nome']}\n"
+                f"Limite de Crédito: R$ {bl_cli:,.2f}\n"
+                f"Valor do Orçamento: R$ {total_orcamento:,.2f}\n"
+                f"Excedente: R$ {(total_orcamento - bl_cli):,.2f}\n\n"
+                f"Digite a senha de liberação para autorizar:"
+            )
+            
+            from tkinter import simpledialog
+            
+            # Buscar configuração de senha (mesma do desconto)
+            desconto_config = get_desconto_config()
+            senha_correta = desconto_config.get('senha_liberacao', str(datetime.now().day))
+            
+            senha = simpledialog.askstring(
+                "Autorização Necessária",
+                mensagem,
+                show='*',
+                parent=self.window
+            )
+            
+            if senha == senha_correta:
+                print(f"✓ Limite de crédito excedido mas autorizado com senha")
+                return True
+            else:
+                messagebox.showerror(
+                    "Senha Incorreta",
+                    "Senha incorreta! Não é possível salvar o orçamento.\n\n"
+                    "O valor excede o limite de crédito do cliente."
+                )
+                return False
+        
+        return True
 
     def carregar_orcamento_existente(self, numero_nota):
         cabecalho = get_orcamento_cabecalho(numero_nota)
@@ -815,6 +940,11 @@ class MainApplication(tk.Frame):
         if not self.items_treeview.get_children():
             messagebox.showwarning("Atenção", "Adicione pelo menos um item ao orçamento.")
             return
+
+        # Validar limite de crédito se cliente selecionado
+        if self.cliente_selecionado:
+            if not self.validar_limite_credito():
+                return
 
         if not self.cliente_selecionado:
             try:
