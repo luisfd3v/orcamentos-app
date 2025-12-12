@@ -457,8 +457,8 @@ class MainApplication(tk.Frame):
             print(f"⚠ BL_CLI não definido ou zero, validação de limite não aplicada")
             return True
         
-        # Calcular total do orçamento
-        total_orcamento = self.calcular_total()
+        # Usar o total do orçamento já calculado (self.valor_final considera descontos)
+        total_orcamento = self.valor_final if hasattr(self, 'valor_final') else self.total_orcamento
         
         # Verificar se excedeu o limite
         if total_orcamento > bl_cli:
@@ -481,7 +481,7 @@ class MainApplication(tk.Frame):
                 "Autorização Necessária",
                 mensagem,
                 show='*',
-                parent=self.window
+                parent=self.parent
             )
             
             if senha == senha_correta:
